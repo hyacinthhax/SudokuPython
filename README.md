@@ -1,6 +1,6 @@
 # SudokuPython
 This is a Sudoku game that I'm working on. I'm adding different features and possibly a self solver soon. 
-I'm loosley following multiple tutorials to get a feel for pygame and what works.
+I'm mainly following A Plus Coding, a youtuber that really knows how to code, While filling in parts to fit my needs from other ideas over time.
 
 To Start type:
 
