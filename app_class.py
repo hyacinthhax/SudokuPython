@@ -13,11 +13,14 @@ class App:
 		self.selected = None
 		self.mousePos = None
 		self.state = "playing"
+		self.finished = False
+		self.cellChanged = False
 		self.playingButtons = []
 		self.menuButtons = []
 		self.font = pygame.font.SysFont('arial', cellSize/2)
 		self.endButtons = []
 		self.lockedCells = []
+		self.incorrectCells = []
 		self.load()
 
 	def run(self):
@@ -58,13 +61,23 @@ class App:
 					print("Not Possible")
 				elif self.selected not in lockedCells:
 					if self.isInt(event.unicode):
+						# Cell Changed
 						self.grid[self.selected[1]][self.selected[0]] = int(event.unicode)
+						self.cellChanged = True
 
 
 	def playing_update(self):
 		self.mousePos = pygame.mouse.get_pos()
 		for button in self.playingButtons:
 			button.update(self.mousePos)
+
+		if self.cellChanged:
+			self.incorrectCells = []
+			if self.allCellsDone():
+				# Check if board is correct
+				self.checkAllCells()
+				if len(self.incorrectCells) == 0:
+					print("Congratulations! ")
 
 	def playing_draw(self):
 		self.window.fill(WHITE)
@@ -73,15 +86,72 @@ class App:
 		if self.selected:
 			self.drawSelection(self.window, self.selected)
 		self.shadeLockedCells(self.window, self.lockedCells)
+		self.shadeIncorrectCells(self.window, self.incorrectCells)
 		self.drawNumbers(self.window)
 		self.drawGrid(self.window)
 		pygame.display.update()
+		self.cellChanged = False
+
+#### Board Check Functions ####
+	def allCellsDone(self):
+		for row in self.grid:
+			for number in row:
+				if number == 0:
+					return False
+		return True
+
+	def checkAllCells(self):
+		self.checkRows()
+		self.checkColumns()
+		self.checkSmallGrid()
+
+	def checkSmallGrid(self):
+		for x in range(3):
+			for y in range(3):
+				possibles = [1,2,3,4,5,6,7,8,9]
+				print("Resetting Possibles...")
+				for i in range(3):
+					for j in range(3):
+						# print(x*3+i, y*3+j)
+						xidx = x*3+i
+						yidx = y*3+j
+						if self.grid[xidx][yidx] in possibles:
+							possibles.remove(self.grid[xidx][yidx])
+						elif [xidx, yidx] not in self.lockedCells and [xidx, yidx] not in self.incorrectCells:
+							self.incorrectCells.append([xidx, yidx])
+							print("Error Found! ")
+
+	def checkRows(self):
+		for yidx, row in enumerate(self.grid):
+			possibles = [1,2,3,4,5,6,7,8,9]
+			for xidx in range(9):
+				if self.grid[yidx][xidx] in possibles:
+					possibles.remove(self.grid[yidx][xidx])
+				else:
+					if [xidx, yidx] not in self.lockedCells and [xidx, yidx] not in self.incorrectCells:
+						self.incorrectCells.append([xidx, yidx])
+
+	def checkColumns(self):
+		for xidx in range(9):
+			possibles = [1,2,3,4,5,6,7,8,9]
+			for yidx, row in enumerate(self.grid):
+				if self.grid[yidx][xidx] in possibles:
+					possibles.remove(self.grid[yidx][xidx])
+				else:
+					if [xidx, yidx] not in self.lockedCells and [xidx, yidx] not in self.incorrectCells:
+						self.incorrectCells.append([xidx, yidx])
+
 
 #### Helper Functions ####
 
 	def shadeLockedCells(self,window,locked):
 		for cell in locked:
 			pygame.draw.rect(window, LOCKEDCELLCOLOR, (cell[0]*cellSize+gridPos[0], cell[1]*cellSize+gridPos[1], cellSize, cellSize))
+
+	def shadeIncorrectCells(self,window,incorrect):
+		for cell in incorrect:
+			pygame.draw.rect(window, INCORRECTCELLCOLOR, (cell[0]*cellSize+gridPos[0], cell[1]*cellSize+gridPos[1], cellSize, cellSize))
+
 
 	def drawNumbers(self, window):
 		for yidx, row in enumerate(self.grid):
