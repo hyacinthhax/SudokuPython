@@ -583,11 +583,10 @@ class App:
         if difficulty in self.all_puzzles and self.all_puzzles[difficulty]:
             return random.choice(self.all_puzzles[difficulty])
         else:
-            self.logger.warning(f"No puzzles found for difficulty '{difficulty}'. Using fallback testBoard1.")
-            # Fallback in case of missing puzzle file/difficulty
-            return testBoard1, testBoard1 # Return a copy of the testBoard as puzzle and solution
-
+            self.logger.warning(f"No puzzles found for difficulty '{difficulty}'.")
+            
 if __name__ == '__main__':
     # Initialize game
     app = App()
     app.run()
+
