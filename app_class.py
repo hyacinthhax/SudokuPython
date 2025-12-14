@@ -177,6 +177,7 @@ class App:
                 pos = pygame.mouse.get_pos()
                 for btn in self.menuButtons:
                     if btn.is_clicked(pos):
+                        self.sound.play("click", volume=0.6)
                         difficulty = btn.text.lower()
                         self.difficulty = difficulty
                         puzzle, solution = self.get_random_puzzle(difficulty)
