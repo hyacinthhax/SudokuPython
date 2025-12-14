@@ -7,6 +7,36 @@ import os
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
+class SoundManager:
+    def __init__(self):
+        self.initialized = False
+        self.sounds = {}
+
+    def init(self):
+        if self.initialized:
+            return
+
+        os.environ.setdefault("SDL_AUDIODRIVER", "pulse")
+
+        pygame.mixer.pre_init(44100, -16, 2, 512)
+        pygame.mixer.init()
+
+        self.initialized = True
+
+    def load(self, name, path):
+        if not self.initialized:
+            raise RuntimeError("SoundManager.init() must be called first")
+
+        self.sounds[name] = pygame.mixer.Sound(path)
+
+    def play(self, name, volume=1.0):
+        if not self.initialized:
+            return  # fail silently if audio is unavailable
+
+        sound = self.sounds.get(name)
+        if sound:
+            sound.set_volume(volume)
+            sound.play()
 
 class Button:
     def __init__(
@@ -51,6 +81,7 @@ class App:
         self.logger = self.setup_logger()
 
         # PyGame
+        self.sound = SoundManager()
         pygame.init()
         self.window = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Sudoku Game")
@@ -83,6 +114,11 @@ class App:
         self.load()
         self.load_puzzles()
         self.load_menu_buttons()
+
+        self.sound.init()
+        self.sound.load("reward", "Sounds/reward.wav")
+        self.sound.load("click", "Sounds/click_1.wav")
+        self.sound.load("claps", "Sounds/claps.wav")
 
     def setup_logger(self):
         logger = logging.getLogger("Sudoku")
@@ -199,6 +235,7 @@ class App:
                 for button in self.playingButtons:
                     if button.is_clicked(pos):
                         button_clicked = True
+                        self.sound.play("click", volume=0.6)
 
                         # RESET
                         if button.text == "Reset":
@@ -308,6 +345,8 @@ class App:
                     self.checkAllCells()
                     if len(self.incorrectCells) == 0 and not self.finished:
                         self.finished = True
+                        self.sound.play("reward", volume=0.9)
+                        self.sound.play("claps", volume=0.9)
                         self.logger.info(f"Congratulations! \nYou completed {self.difficulty} puzzle in {self.elapsed_time} seconds!\nWith only {self.hints_used}/{self.hints_max}")
                         self.paused = True
 
@@ -590,3 +629,9 @@ if __name__ == '__main__':
     app = App()
     app.run()
 
+
+""" Contributions - SFX
+Click_1.wav by JonnyRuss01 -- https://freesound.org/s/478197/ -- License: Creative Commons 0
+Video Game SFX Positive Action Long Tail by djlprojects -- https://freesound.org/s/413629/ -- License: Attribution 4.0
+Claps.wav by mgc5066 -- https://freesound.org/s/508700/ -- License: Attribution 4.0
+"""
