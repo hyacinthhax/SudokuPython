@@ -1,6 +1,5 @@
 import pygame, sys, pickle, random
 from settings import *
-# from buttonClass import * # Note: Button class is defined in this file, so this import is redundant/circular
 import logging
 import os
 
@@ -10,14 +9,26 @@ os.chdir(script_dir)
 
 
 class Button:
-    def __init__(self, x, y, width, height, text=""):
+    def __init__(
+        self, x, y, width, height, text="",
+        color=(200,200,200), highlightedColor=(180,180,250),
+        function=None, params=None
+    ):
         self.rect = pygame.Rect(x, y, width, height)
         self.text = text
         self.hover = False
+        self.color = color
+        self.highlightedColor = highlightedColor
+        self.function = function
+        self.params = params
+
+    def update(self, mousePos):
+        self.hover = self.rect.collidepoint(mousePos)
 
     def draw(self, window):
-        color = (180,180,250) if self.hover else (200,200,200)
-        pygame.draw.rect(window, color, self.rect)
+        draw_color = self.highlightedColor if self.hover else self.color
+        pygame.draw.rect(window, draw_color, self.rect)
+
         if self.text:
             font = pygame.font.SysFont("arial", 24)
             text_surf = font.render(self.text, True, (0,0,0))
@@ -27,18 +38,25 @@ class Button:
     def is_clicked(self, pos):
         return self.rect.collidepoint(pos)
 
-    def update(self, mousePos):
-        self.hover = self.rect.collidepoint(mousePos)
+    def click(self):
+        if self.function:
+            if self.params:
+                self.function(*self.params)
+            else:
+                self.function()
 
 class App:
     def __init__(self):
         global window
         self.logger = self.setup_logger()
+
+        # PyGame
         pygame.init()
         self.window = pygame.display.set_mode((WIDTH, HEIGHT))
+        pygame.display.set_caption("Sudoku Game")
         window = self.window
-        self.difficulty = None
 
+        self.difficulty = None
         self.running = True
         self.paused = False
         self.grid = testBoard1
@@ -140,10 +158,29 @@ class App:
 
     def menu_draw(self):
         self.window.fill(WHITE)
-        # Draw Title/Instructions here if desired
+
+        # Get current mouse position
+        mouse_pos = pygame.mouse.get_pos()
+
+        # Update and draw buttons
         for btn in self.menuButtons:
+            btn.update(mouse_pos)
             btn.draw(self.window)
+
+        # Draw title
+        font = pygame.font.SysFont("arial", 48)
+        title_surf = font.render("Pydoku", True, BLACK)
+        title_rect = title_surf.get_rect(center=(WIDTH//2, HEIGHT//7))
+        self.window.blit(title_surf, title_rect)
+
+        # Draw your name at bottom
+        font_name = pygame.font.SysFont("arial", 24)
+        name_surf = font_name.render("Hyacinthhax", True, BLACK)
+        name_rect = name_surf.get_rect(center=(WIDTH//2, HEIGHT-50))
+        self.window.blit(name_surf, name_rect)
+
         pygame.display.update()
+
 
     # -----------------------------
     # Playing functions
@@ -271,7 +308,7 @@ class App:
                     self.checkAllCells()
                     if len(self.incorrectCells) == 0 and not self.finished:
                         self.finished = True
-                        self.logger.info(f"Congratulations! \nYou completed {self.difficulty} puzzle in {self.elapsed_time} seconds!\nWith {self.hints_used}/{self.hints_max}")
+                        self.logger.info(f"Congratulations! \nYou completed {self.difficulty} puzzle in {self.elapsed_time} seconds!\nWith only {self.hints_used}/{self.hints_max}")
                         self.paused = True
 
     def playing_draw(self):
@@ -436,23 +473,31 @@ class App:
 
     def loadButtons(self):
         self.playingButtons = []
-        
-        # Calculate button positions relative to the grid
-        start_x = gridPos[0]
-        start_y = gridPos[1] - 60
-        spacing = 140
+
+        # Button layout
         btn_width = 120
         btn_height = 50
+        spacing = 20  # space between buttons
+        num_buttons = 4
 
+        # Total width of all buttons + spacing
+        total_width = num_buttons * btn_width + (num_buttons - 1) * spacing
+
+        # Start x to center over grid
+        start_x = gridPos[0] + (gridSize - total_width) // 2
+        start_y = gridPos[1] - 60  # above grid
+
+        # Create buttons
         reset_btn = Button(start_x, start_y, btn_width, btn_height, text="Reset")
-        pause_btn = Button(start_x + spacing, start_y, btn_width, btn_height, text="Pause")
-        hint_btn  = Button(start_x + spacing*2, start_y, btn_width, btn_height, text="Hint")
-        menu_btn  = Button(start_x + spacing*3, start_y, btn_width, btn_height, text="Menu")
+        pause_btn = Button(start_x + (btn_width + spacing), start_y, btn_width, btn_height, text="Pause")
+        hint_btn  = Button(start_x + 2*(btn_width + spacing), start_y, btn_width, btn_height, text="Hint")
+        menu_btn  = Button(start_x + 3*(btn_width + spacing), start_y, btn_width, btn_height, text="Menu")
 
         self.playingButtons.extend([reset_btn, pause_btn, hint_btn, menu_btn])
 
+        # Reset hints
         self.hints_used = 0
-        self.hints_max = 3 # Reset hints
+        self.hints_max = 3
 
     def use_hint(self):
         empty_cells = [(x, y) for y in range(9) for x in range(9) if self.grid[y][x] == 0]
