@@ -2,18 +2,41 @@ import pygame, sys, pickle, random
 from settings import *
 from buttonClass import *
 
+class Button:
+    def __init__(self, x, y, width, height, text=""):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text
+        self.hover = False
+
+    def draw(self, window):
+        color = (180,180,250) if self.hover else (200,200,200)
+        pygame.draw.rect(window, color, self.rect)
+        if self.text:
+            font = pygame.font.SysFont("arial", 24)
+            text_surf = font.render(self.text, True, (0,0,0))
+            text_rect = text_surf.get_rect(center=self.rect.center)
+            window.blit(text_surf, text_rect)
+
+    def is_clicked(self, pos):
+        return self.rect.collidepoint(pos)
+
+    def update(self, mousePos):
+        self.hover = self.rect.collidepoint(mousePos)
+
 class App:
     def __init__(self):
+        global window
         pygame.init()
         self.window = pygame.display.set_mode((WIDTH, HEIGHT))
         window = self.window
-        global window
 
         self.running = True
+        self.paused = False
         self.grid = testBoard1
+        self.original_grid = [row[:] for row in testBoard1]  # store original for reset
         self.selected = None
         self.mousePos = None
-        self.state = "menu"  # start with menu
+        self.state = "menu"
         self.finished = False
         self.cellChanged = False
         self.playingButtons = []
@@ -23,8 +46,10 @@ class App:
         self.lockedCells = []
         self.incorrectCells = []
 
-        self.timer_start = None  # Timer start
+        self.pause_start = None
+        self.timer_start = None
         self.elapsed_time = 0
+        self.paused_elapsed = 0
 
         self.load()
         self.load_puzzles()
@@ -43,7 +68,7 @@ class App:
                 self.playing_events()
                 self.playing_update()
                 self.playing_draw()
-            clock.tick(60)  # limit to 60 FPS
+            clock.tick(60)
         pygame.quit()
         sys.exit()
 
@@ -67,14 +92,18 @@ class App:
                 pos = pygame.mouse.get_pos()
                 for btn in self.menuButtons:
                     if btn.is_clicked(pos):
-                        # Load random puzzle of selected difficulty
                         difficulty = btn.text.lower()
                         puzzle, solution = self.get_random_puzzle(difficulty)
-                        self.grid = puzzle
-                        self.solution = solution
+                        self.grid = [row[:] for row in puzzle]
+                        self.original_grid = [row[:] for row in puzzle]  # store original
+                        self.solution = [row[:] for row in solution]
                         self.lockedCells = [(x,y) for y in range(9) for x in range(9) if puzzle[y][x] != 0]
                         self.state = "playing"
-                        self.timer_start = pygame.time.get_ticks()  # start timer
+                        self.paused = False
+                        self.timer_start = pygame.time.get_ticks()
+                        self.elapsed_time = 0
+                        self.pause_start = None
+                        self.loadButtons()
 
     def menu_draw(self):
         self.window.fill(WHITE)
@@ -88,20 +117,70 @@ class App:
     def playing_events(self):
         for event in pygame.event.get():
             lockedCells = self.lockedCells
+
             if event.type == pygame.QUIT:
                 self.running = False
 
-            # User clicks
+            # Mouse clicks
             if event.type == pygame.MOUSEBUTTONDOWN:
-                selected = self.mouseOnGrid()
-                if selected in lockedCells:
-                    self.selected = False
-                    self.mousePos = None
-                else:
-                    self.selected = selected
+                pos = pygame.mouse.get_pos()
+                button_clicked = False
+                for button in self.playingButtons:
+                    if button.is_clicked(pos):
+                        button_clicked = True
 
-            # User types
-            if event.type == pygame.KEYDOWN:
+                        # RESET
+                        if button.text == "Reset":  # ensure reset works even after pause
+                            self.grid = [row[:] for row in self.original_grid]
+                            self.incorrectCells = []
+                            self.cellChanged = True
+                            self.selected = None
+                            self.elapsed_time = 0
+                            self.timer_start = pygame.time.get_ticks()
+                            self.paused = False
+                            # reset pause button text
+                            for b in self.playingButtons:
+                                if b.text in ["Pause", "Resume"]:
+                                    b.text = "Pause"
+
+                        # PAUSE / RESUME
+                        elif button.text in ["Pause", "Resume"]:
+                            if not self.paused:
+                                self.paused = True
+                                self.pause_start = pygame.time.get_ticks()
+
+                                self.paused_elapsed = self.elapsed_time  # store time at pause
+                                button.text = "Resume"
+                            else:
+                                self.paused = False
+                                self.timer_start += pygame.time.get_ticks() - self.pause_start
+                                self.pause_start = None
+                                button.text = "Pause"
+
+                        # HINT
+                        elif button.text == "Hint" and self.hints_used < self.hints_max:
+                            self.use_hint()
+
+                        elif button.text == "Menu":
+                            # Return to menu safely
+                            self.state = "menu"
+                            self.paused = False
+                            self.selected = None
+                            self.incorrectCells = []
+                            self.lockedCells = []
+                            self.playingButtons = []
+
+                # Cell selection (only if not paused)
+                if not button_clicked and not self.paused:
+                    selected = self.mouseOnGrid()
+                    if selected in lockedCells:
+                        self.selected = None
+                        self.mousePos = None
+                    else:
+                        self.selected = selected
+
+            # Keyboard input (only if not paused)
+            if event.type == pygame.KEYDOWN and not self.paused:
                 if self.selected not in lockedCells and self.isInt(event.unicode):
                     self.grid[self.selected[1]][self.selected[0]] = int(event.unicode)
                     self.cellChanged = True
@@ -111,9 +190,8 @@ class App:
         for button in self.playingButtons:
             button.update(self.mousePos)
 
-        # Update timer
-        if self.timer_start:
-            self.elapsed_time = (pygame.time.get_ticks() - self.timer_start) // 1000  # seconds
+        if self.timer_start and not self.paused:
+            self.elapsed_time = (pygame.time.get_ticks() - self.timer_start) // 1000
 
         if self.cellChanged:
             self.incorrectCells = []
@@ -143,12 +221,35 @@ class App:
         minutes = self.elapsed_time // 60
         seconds = self.elapsed_time % 60
         time_str = f"{minutes:02}:{seconds:02}"
+
         font = pygame.font.SysFont("arial", 30)
         text_surf = font.render(time_str, True, BLACK)
-        window.blit(text_surf, (WIDTH-150, 20))
+
+        # --- TIMER: centered below grid ---
+        timer_rect = text_surf.get_rect(
+            midtop=(
+                gridPos[0] + gridSize // 2,
+                gridPos[1] + gridSize + 10
+            )
+        )
+        window.blit(text_surf, timer_rect)
+
+        # --- HINT COUNTER ABOVE HINT BUTTON (unchanged) ---
+        hint_font = pygame.font.SysFont("arial", 22)
+        hint_str = f"Hints: {self.hints_used}/{self.hints_max}"
+        hint_surf = hint_font.render(hint_str, True, BLACK)
+
+        for button in self.playingButtons:
+            if button.text == "Hint":
+                hint_rect = hint_surf.get_rect(
+                    midbottom=(button.rect.centerx, button.rect.top - 5)
+                )
+                window.blit(hint_surf, hint_rect)
+                break
+
 
     # -----------------------------
-    # Board checks (same as before)
+    # Board checks (unchanged)
     # -----------------------------
     def allCellsDone(self):
         for row in self.grid:
@@ -194,7 +295,7 @@ class App:
                     self.incorrectCells.append((xidx, yidx))
 
     # -----------------------------
-    # Helper functions (same as before)
+    # Helper functions
     # -----------------------------
     def shadeLockedCells(self, window, locked):
         for cell in locked:
@@ -227,7 +328,32 @@ class App:
         return cell if cell not in self.lockedCells else False
 
     def loadButtons(self):
-        self.playingButtons.append(Button(20, 40, 100, 40))
+        self.playingButtons = []
+
+        start_x = gridPos[0]
+        start_y = gridPos[1] - 60
+        spacing = 140
+
+        reset_btn = Button(start_x, start_y, 120, 50, text="Reset")
+        pause_btn = Button(start_x + spacing, start_y, 120, 50, text="Pause")
+        hint_btn  = Button(start_x + spacing*2, start_y, 120, 50, text="Hint")
+        menu_btn  = Button(start_x + spacing*3, start_y, 120, 50, text="Menu")
+
+        self.playingButtons.extend([reset_btn, pause_btn, hint_btn, menu_btn])
+
+        self.hints_used = 0
+        self.hints_max = 3
+
+
+    def use_hint(self):
+        empty_cells = [(x, y) for y in range(9) for x in range(9) if self.grid[y][x] == 0]
+        if not empty_cells:
+            return
+        x, y = random.choice(empty_cells)
+        self.grid[y][x] = self.solution[y][x]
+        self.lockedCells.append((x, y))
+        self.hints_used += 1
+        self.cellChanged = True
 
     def textToScreen(self, window, text, pos):
         font_surf = self.font.render(text, False, BLACK)
@@ -235,6 +361,15 @@ class App:
         pos[0] += (cellSize-fontWidth)//2
         pos[1] += (cellSize-fontHeight)//2
         window.blit(font_surf, pos)
+
+    def load(self):
+        global lockedCells
+        self.loadButtons()
+        for yidx, row in enumerate(self.grid):
+            for xidx, num in enumerate(row):
+                if num != 0:
+                    self.lockedCells.append((xidx, yidx))
+        lockedCells = self.lockedCells
 
     def isInt(self, string):
         try:
@@ -244,7 +379,7 @@ class App:
             return False
 
     # -----------------------------
-    # Puzzle loading functions
+    # Puzzle loading
     # -----------------------------
     def load_puzzles(self, filename="sudoku_puzzles.pkl"):
         with open(filename, "rb") as f:
